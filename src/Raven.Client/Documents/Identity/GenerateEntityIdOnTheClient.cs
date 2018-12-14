@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Dynamic;
 using System.Reflection;
 using Microsoft.CSharp.RuntimeBinder;
@@ -119,7 +120,16 @@ namespace Raven.Client.Documents.Identity
 
             if (identityProperty.CanWrite())
             {
-                SetPropertyOrField(identityProperty, entity, val => identityProperty.SetValue(entity, val), id);
+                SetPropertyOrField(identityProperty, entity, val =>
+                {
+                    var memberType = identityProperty.GetMemberType();
+                    if (memberType != typeof(string))
+                    {
+                        var converter = TypeDescriptor.GetConverter(memberType);
+                        val = converter.ConvertFrom(val);
+                    }
+                    identityProperty.SetValue(entity, val);
+                }, id);
             }
             else
             {
@@ -130,7 +140,16 @@ namespace Raven.Client.Documents.Identity
                 if (fieldInfo == null)
                     return;
 
-                SetPropertyOrField(identityProperty, entity, val => fieldInfo.SetValue(entity, val), id);
+                SetPropertyOrField(identityProperty, entity, val =>
+                {
+                    var memberType = identityProperty.GetMemberType();
+                    if (memberType != typeof(string))
+                    {
+                        var converter = TypeDescriptor.GetConverter(memberType);
+                        val = converter.ConvertFrom(val);
+                    }
+                    fieldInfo.SetValue(entity, val);
+                }, id);
             }
         }
 
@@ -150,7 +169,7 @@ namespace Raven.Client.Documents.Identity
 
         private static void SetPropertyOrField(MemberInfo memberInfo, object entity, Action<object> setIdentifier, string id)
         {
-            if (memberInfo.Type() != typeof(string))
+            if (memberInfo.Type() != typeof(string) && !CanIdentifierBeConvertedFromString(memberInfo.Type()))
             {
                 var isProperty = memberInfo.IsProperty();
                 var name = isProperty ? "property" : "field";
@@ -158,6 +177,12 @@ namespace Raven.Client.Documents.Identity
             }
 
             setIdentifier(id);
+        }
+
+        private static bool CanIdentifierBeConvertedFromString(Type identifierType)
+        {
+            var converter = TypeDescriptor.GetConverter(identifierType);
+            return converter != null && converter.CanConvertFrom(typeof(string));
         }
     }
 }
